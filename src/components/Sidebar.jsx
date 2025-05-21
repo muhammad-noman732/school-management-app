@@ -1,9 +1,9 @@
-
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { X, LayoutDashboard, Users, BookOpen, Settings, CalendarCheck } from 'lucide-react';
+import { X, LayoutDashboard, Users, BookOpen, Settings, CalendarCheck, GraduationCap, UserPlus, BookCheck, User } from 'lucide-react';
 import { useIsMobile } from '../hooks/use-mobile';
+import { cn } from '../lib/utils';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user } = useSelector(state => state.auth);
@@ -20,21 +20,21 @@ const Sidebar = ({ isOpen, onClose }) => {
       case 'admin':
         return [
           { path: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-          { path: '/admin/pending-users', label: 'Pending Users', icon: <Users size={18} /> },
           { path: '/admin/manage-classes', label: 'Manage Classes', icon: <BookOpen size={18} /> },
+          { path: '/admin/class-assignments', label: 'Class Assignments', icon: <BookCheck size={18} /> },
+          { path: '/admin/pending-users', label: 'Pending Users', icon: <UserPlus size={18} /> },
           { path: '/admin/settings', label: 'Settings', icon: <Settings size={18} /> },
         ];
       case 'teacher':
         return [
           { path: '/teacher', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
           { path: '/teacher/classes', label: 'My Classes', icon: <BookOpen size={18} /> },
-          { path: '/teacher/assignments', label: 'Assignments', icon: <CalendarCheck size={18} /> },
+          { path: '/teacher/profile', label: 'Profile', icon: <User size={18} /> },
         ];
       case 'student':
         return [
           { path: '/student', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
           { path: '/student/classes', label: 'My Classes', icon: <BookOpen size={18} /> },
-          { path: '/student/assignments', label: 'Assignments', icon: <CalendarCheck size={18} /> },
         ];
       default:
         return [];
@@ -50,13 +50,13 @@ const Sidebar = ({ isOpen, onClose }) => {
         {isOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 z-30" onClick={onClose} />
         )}
-        <div 
+        <div
           className={`fixed left-0 top-0 bottom-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 ease-in-out ${
             isOpen ? 'translate-x-0' : '-translate-x-full'
           } pt-16`}
         >
           <div className="flex justify-end p-2 absolute top-0 right-0">
-            <button 
+            <button
               onClick={onClose}
               className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400"
             >

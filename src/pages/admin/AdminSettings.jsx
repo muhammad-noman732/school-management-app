@@ -13,8 +13,7 @@ import InstitutionSettingsForm from '../../components/settings/InstitutionSettin
 import DepartmentForm from '../../components/settings/DepartmentForm';
 import DepartmentList from '../../components/settings/DepartmentList';
 import ClassSettingsForm from '../../components/settings/ClassSettingsForm';
-import AdminNavbar from '../../components/admin/AdminNavbar';
-import AdminSidebar from '../../components/admin/AdminSidebar';
+import Layout from '../../components/Layout';
 
 const AdminSettings = () => {
   const dispatch = useDispatch();
@@ -29,7 +28,6 @@ const AdminSettings = () => {
 
   const [activeTab, setActiveTab] = useState('institution');
   const [editingDepartment, setEditingDepartment] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
     dispatch(fetchSettings());
@@ -52,17 +50,13 @@ const AdminSettings = () => {
 
   const handleDepartmentSubmit = async (values) => {
     try {
-      console.log('Submitting department values:', values);
-      
       if (editingDepartment && editingDepartment.id) {
-        console.log('Updating department:', editingDepartment.id);
         await dispatch(updateDepartment({
           id: editingDepartment.id,
           ...values
         })).unwrap();
         toast.success('Department updated successfully');
       } else {
-        console.log('Adding new department');
         await dispatch(addDepartment({
           name: values.name,
           code: values.code,
@@ -73,7 +67,6 @@ const AdminSettings = () => {
       }
       setEditingDepartment(null);
     } catch (error) {
-      console.error('Department operation failed:', error);
       toast.error(error.message || 'Failed to save department');
     }
   };
@@ -97,88 +90,76 @@ const AdminSettings = () => {
       toast.error(error.message || 'Failed to update class settings');
     }
   };
-
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
   
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-      <AdminNavbar onMenuClick={toggleSidebar} />
-      
-      <div className="flex">
-        <AdminSidebar isOpen={isSidebarOpen} />
-        
-        <main className={`flex-1 p-4 transition-all duration-300 ${isSidebarOpen ? 'ml-64' : 'ml-0'}`}>
-          <div className="max-w-7xl mx-auto">
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                Admin Settings
-              </h1>
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Manage your institution settings, departments, and class configurations
-              </p>
-            </div>
+    <Layout requiredRole="admin">
+      <div className="p-6">
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Admin Settings
+          </h1>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Manage your institution settings, departments, and class configurations
+          </p>
+        </div>
 
-            <div className="mb-6">
-              <nav className="flex space-x-4" aria-label="Tabs">
-                {['institution', 'departments', 'classes'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`${
-                      activeTab === tab
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
-                        : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                    } px-3 py-2 font-medium text-sm rounded-md capitalize`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </nav>
-            </div>
-              
-            <div className="bg-white shadow rounded-lg p-6 dark:bg-gray-800">
-              {activeTab === 'institution' && (
-                <InstitutionSettingsForm
-                  initialValues={institution}
-                  onSubmit={handleInstitutionSubmit}
+        <div className="mb-6">
+          <nav className="flex space-x-4" aria-label="Tabs">
+            {['institution', 'departments', 'classes'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`${
+                  activeTab === tab
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                } px-3 py-2 font-medium text-sm rounded-md capitalize`}
+              >
+                {tab}
+              </button>
+            ))}
+          </nav>
+        </div>
+          
+        <div className="bg-white shadow rounded-lg p-6 dark:bg-gray-800">
+          {activeTab === 'institution' && (
+            <InstitutionSettingsForm
+              initialValues={institution}
+              onSubmit={handleInstitutionSubmit}
+              loading={loading}
+            />
+          )}
+
+          {activeTab === 'departments' && (
+            <div className="space-y-6">
+              {editingDepartment ? (
+                <DepartmentForm
+                  initialValues={editingDepartment}
+                  onSubmit={handleDepartmentSubmit}
+                  onCancel={() => setEditingDepartment(null)}
                   loading={loading}
                 />
-              )}
-
-              {activeTab === 'departments' && (
-                <div className="space-y-6">
-                  {editingDepartment ? (
-                    <DepartmentForm
-                      initialValues={editingDepartment}
-                      onSubmit={handleDepartmentSubmit}
-                      onCancel={() => setEditingDepartment(null)}
-                      loading={loading}
-                    />
-                  ) : (
-                    <DepartmentList
-                      departments={departments}
-                      onEdit={setEditingDepartment}
-                      onDelete={handleDepartmentDelete}
-                      onAdd={() => setEditingDepartment({})}
-                    />
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'classes' && (
-                <ClassSettingsForm
-                  initialValues={classSettings}
-                  onSubmit={handleClassSettingsSubmit}
-                  loading={loading}
+              ) : (
+                <DepartmentList
+                  departments={departments}
+                  onEdit={setEditingDepartment}
+                  onDelete={handleDepartmentDelete}
+                  onAdd={() => setEditingDepartment({})}
                 />
               )}
             </div>
-          </div>
-        </main>
+          )}
+
+          {activeTab === 'classes' && (
+            <ClassSettingsForm
+              initialValues={classSettings}
+              onSubmit={handleClassSettingsSubmit}
+              loading={loading}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 };
 

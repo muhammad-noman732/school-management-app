@@ -11,27 +11,31 @@ import { onAuthStateChanged } from "firebase/auth";
 // Get current logged-in user (with onAuthStateChanged)
 export const getCurrentUser = createAsyncThunk(
   "/auth/getCurrentUser",
-  async (_, { rejectWithValue, dispatch }) => {
+  async () => {
     return new Promise((resolve, reject) => {
-      onAuthStateChanged(auth, async (user) => {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        unsubscribe();
         if (user) {
           try {
-            const docSnap = await getDoc(doc(db, "users", user.uid));
-            const dbUser = docSnap.data();
-            
-            // Reject if user not approved
-            if (dbUser?.role === "pending") {
-              return reject("Your account is not approved yet.");
+            const userDoc = await getDoc(doc(db, "users", user.uid));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              if (userData.role === 'teacher') {
+                resolve({
+                  id: user.uid,
+                  email: user.email,
+                  ...userData
+                });
+              } else {
+                reject(new Error('Access denied. Teachers only.'));
+              }
+            } else {
+              reject(new Error('User data not found'));
             }
-
-            dispatch(setUserState(dbUser));
-            resolve(dbUser);
-          } catch (err) {
-            reject(rejectWithValue(err.message));
+          } catch (error) {
+            reject(error);
           }
         } else {
-          // No user is logged in
-          dispatch(setUserState(null));
           resolve(null);
         }
       });
@@ -89,33 +93,22 @@ export const getCurrentUser = createAsyncThunk(
 // Register User
 export const registerUser = createAsyncThunk(
   'auth/register',
-  async ({ name, email, password, role, departmentId }, { rejectWithValue }) => {
+  async ({ email, password, name }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const { user } = userCredential;
-
-      // Create user document in Firestore with minimal info
-      await setDoc(doc(db, "users", user.uid), {
+      
+      // Create user document in Firestore
+      const userData = {
+        id: userCredential.user.uid,
+        email: userCredential.user.email,
         name,
-        email,
-        role: 'pending', // Set initial role as pending
-        departmentId,
-        status: "waiting_approval",
-        isApproved: false,
+        role: 'teacher',
         createdAt: new Date().toISOString()
-      });
-
-      return {
-        uid: user.uid,
-        name,
-        email,
-        role: 'pending',
-        departmentId,
-        status: "waiting_approval",
-        isApproved: false
       };
+
+      return userData;
     } catch (error) {
-      return rejectWithValue(error.message);
+      throw error;
     }
   }
 );
@@ -226,35 +219,28 @@ export const approveUser = createAsyncThunk(
 // Login User
 export const loginUser = createAsyncThunk(
   'auth/login',
-  async ({ email, password }, { rejectWithValue }) => {
+  async ({ email, password }) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const { user } = userCredential;
-
-      const userDoc = await getDoc(doc(db, "users", user.uid));
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       
       if (!userDoc.exists()) {
-        throw new Error("User document not found");
+        throw new Error('User data not found');
       }
 
       const userData = userDoc.data();
-      
-      // Check if user is approved
-      if (!userData.isApproved) {
-        throw new Error("Your account is pending approval");
-      }
-
-      // Check if user has a valid role
-      if (userData.role === 'pending') {
-        throw new Error("Your account is pending role assignment");
+      if (userData.role !== 'teacher') {
+        await signOut(auth);
+        throw new Error('Access denied. Teachers only.');
       }
 
       return {
-        uid: user.uid,
+        id: userCredential.user.uid,
+        email: userCredential.user.email,
         ...userData
       };
     } catch (error) {
-      return rejectWithValue(error.message);
+      throw error;
     }
   }
 );
@@ -262,13 +248,12 @@ export const loginUser = createAsyncThunk(
 // Logout User
 export const logoutUser = createAsyncThunk(
   'auth/logout',
-  async (_, { rejectWithValue }) => {
-  try {
-    await signOut(auth);
-      return null;
-  } catch (error) {
-    return rejectWithValue(error.message);
-  }
+  async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      throw error;
+    }
   }
 );
 
@@ -318,6 +303,25 @@ export const fetchUserStats = createAsyncThunk(
   }
 );
 
+// Add this new async thunk
+export const fetchUsers = createAsyncThunk(
+  'auth/fetchUsers',
+  async (_, { rejectWithValue }) => {
+    try {
+      const usersRef = collection(db, 'users');
+      const snapshot = await getDocs(usersRef);
+      const users = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      return users;
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 // Slice
 const authSlice = createSlice({
   name: "auth",
@@ -332,7 +336,8 @@ const authSlice = createSlice({
       totalStudents: 0,
       totalPending: 0,
       recentPending: []
-    }
+    },
+    users: []
   },
   reducers: {
     setUserState: (state, action) => {
@@ -356,7 +361,7 @@ const authSlice = createSlice({
     });
     builder.addCase(registerUser.rejected, (state, action) => {
       state.status = 'failed';
-      state.error = action.payload;
+      state.error = action.error.message;
     });
 
     // Login
@@ -371,7 +376,7 @@ const authSlice = createSlice({
     });
     builder.addCase(loginUser.rejected, (state, action) => {
       state.status = 'failed';
-      state.error = action.payload;
+      state.error = action.error.message;
     });
 
     // Approve User
@@ -381,7 +386,7 @@ const authSlice = createSlice({
     });
     builder.addCase(approveUser.fulfilled, (state, action) => {
       state.status = 'succeeded';
-      if (state.user && state.user.uid === action.payload.userId) {
+      if (state.user && state.user.id === action.payload.userId) {
         state.user = { ...state.user, ...action.payload };
       }
       state.error = null;
@@ -406,11 +411,13 @@ const authSlice = createSlice({
       state.loading = false;
       state.user = action.payload;
       state.authChecked = true;
+      state.error = null;
     });
     builder.addCase(getCurrentUser.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload;
+      state.user = null;
       state.authChecked = true;
+      state.error = action.error.message;
     });
 
     // Fetch Pending Users
@@ -440,6 +447,20 @@ const authSlice = createSlice({
     builder.addCase(fetchUserStats.rejected, (state, action) => {
       state.loading = false;
       state.error = action.payload || 'Failed to fetch user statistics';
+    });
+
+    // Fetch Users
+    builder.addCase(fetchUsers.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
+    builder.addCase(fetchUsers.fulfilled, (state, action) => {
+      state.loading = false;
+      state.users = action.payload;
+    });
+    builder.addCase(fetchUsers.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload;
     });
   }
 })

@@ -79,16 +79,9 @@ export const updateInstitutionSettings = createAsyncThunk(
       
       const settingsData = {
         name: institutionName,
+        logo: logo,
         updatedAt: serverTimestamp()
       };
-      
-      // If there's a new logo, upload it
-      if (logo) {
-        const storageRef = ref(storage, `institution/logo/${Date.now()}_${logo.name}`);
-        await uploadBytes(storageRef, logo);
-        const logoUrl = await getDownloadURL(storageRef);
-        settingsData.logo = logoUrl;
-      }
 
       // If document doesn't exist, create it with createdAt
       if (!settingsDoc.exists()) {
@@ -100,7 +93,7 @@ export const updateInstitutionSettings = createAsyncThunk(
         await updateDoc(settingsRef, settingsData);
       }
 
-      return convertToSerializable(settingsData);
+      return settingsData;
     } catch (error) {
       console.error('Error updating institution settings:', error);
       return rejectWithValue(error.message);

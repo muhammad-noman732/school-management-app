@@ -9,7 +9,9 @@ import {
   query, 
   where,
   serverTimestamp,
-  getCountFromServer
+  getCountFromServer,
+  getDoc,
+  arrayUnion
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -44,15 +46,16 @@ export const createClass = createAsyncThunk(
   async (classData, { rejectWithValue }) => {
     try {
       const classesRef = collection(db, 'classes');
+      const timestamp = new Date().toISOString();
       const docRef = await addDoc(classesRef, {
         ...classData,
-        createdAt: serverTimestamp(),
+        createdAt: timestamp,
         status: 'active'
       });
       return {
         id: docRef.id,
         ...classData,
-        createdAt: new Date().toISOString(),
+        createdAt: timestamp,
         status: 'active'
       };
     } catch (error) {
@@ -66,14 +69,15 @@ export const updateClass = createAsyncThunk(
   async ({ id, classData }, { rejectWithValue }) => {
     try {
       const classRef = doc(db, 'classes', id);
+      const timestamp = new Date().toISOString();
       await updateDoc(classRef, {
         ...classData,
-        updatedAt: serverTimestamp()
+        updatedAt: timestamp
       });
       return {
         id,
         ...classData,
-        updatedAt: new Date().toISOString()
+        updatedAt: timestamp
       };
     } catch (error) {
       console.error('Error updating class:', error);
@@ -87,9 +91,10 @@ export const deleteClass = createAsyncThunk(
   async (id, { rejectWithValue }) => {
     try {
       const classRef = doc(db, 'classes', id);
+      const timestamp = new Date().toISOString();
       await updateDoc(classRef, {
         status: 'archived',
-        archivedAt: serverTimestamp()
+        archivedAt: timestamp
       });
       return { id };
     } catch (error) {
@@ -152,6 +157,120 @@ export const fetchClassStats = createAsyncThunk(
       };
     } catch (error) {
       console.error('Error fetching class stats:', error);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// Add these new async thunks
+export const assignTeacherToClass = createAsyncThunk(
+  'classes/assignTeacher',
+  async ({ classId, teacherId }, { rejectWithValue }) => {
+    try {
+      const classRef = doc(db, 'classes', classId);
+      const userRef = doc(db, 'users', teacherId);
+
+      // Get user data
+      const userDoc = await getDoc(userRef);
+      if (!userDoc.exists()) {
+        return rejectWithValue('User not found');
+      }
+
+      const userData = userDoc.data();
+      if (userData.role !== 'teacher') {
+        return rejectWithValue('Selected user is not a teacher');
+      }
+
+      // Update class with teacher information
+      await updateDoc(classRef, {
+        teacherId: teacherId,
+        teacherName: userData.name,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Update user's classes array
+      await updateDoc(userRef, {
+        classes: arrayUnion({
+          id: classId,
+          name: userData.name,
+          role: 'teacher',
+          assignedAt: new Date().toISOString()
+        }),
+        updatedAt: new Date().toISOString()
+      });
+
+      return { 
+        classId, 
+        teacherId, 
+        teacherName: userData.name,
+        assignedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Error assigning teacher to class:', error);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const assignStudentToClass = createAsyncThunk(
+  'classes/assignStudentToClass',
+  async ({ classId, studentId }, { rejectWithValue }) => {
+    try {
+      // Get student data
+      const userRef = doc(db, 'users', studentId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('Student not found');
+      }
+
+      const userData = userDoc.data();
+      
+      // Validate role
+      if (userData.role !== 'student') {
+        throw new Error('User is not a student');
+      }
+
+      // Get class data
+      const classRef = doc(db, 'classes', classId);
+      const classDoc = await getDoc(classRef);
+      
+      if (!classDoc.exists()) {
+        throw new Error('Class not found');
+      }
+
+      const classData = classDoc.data();
+
+      // Check if student is already enrolled
+      if (classData.students?.some(s => s.id === studentId)) {
+        throw new Error('Student is already enrolled in this class');
+      }
+
+      // Update class with new student
+      await updateDoc(classRef, {
+        students: arrayUnion({
+          id: studentId,
+          name: userData.name,
+          email: userData.email,
+          rollNumber: userData.rollNumber,
+          enrolledAt: new Date().toISOString() // Use ISO string instead of serverTimestamp
+        })
+      });
+
+      // Update student's classes array
+      await updateDoc(userRef, {
+        classes: arrayUnion({
+          id: classId,
+          name: classData.name,
+          department: classData.department,
+          role: 'student',
+          enrolledAt: new Date().toISOString() // Use ISO string instead of serverTimestamp
+        })
+      });
+
+      return { classId, studentId };
+    } catch (error) {
+      console.error('Error assigning student to class:', error);
       return rejectWithValue(error.message);
     }
   }
@@ -274,6 +393,52 @@ const classSlice = createSlice({
       .addCase(fetchClassStats.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || 'Failed to fetch class statistics';
+      })
+      // Assign Teacher to Class
+      .addCase(assignTeacherToClass.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(assignTeacherToClass.fulfilled, (state, action) => {
+        state.loading = false;
+        const classIndex = state.classes.findIndex(c => c.id === action.payload.classId);
+        if (classIndex !== -1) {
+          state.classes[classIndex] = {
+            ...state.classes[classIndex],
+            teacherId: action.payload.teacherId,
+            teacherName: action.payload.teacherName
+          };
+        }
+        state.success = true;
+      })
+      .addCase(assignTeacherToClass.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // Assign Student to Class
+      .addCase(assignStudentToClass.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(assignStudentToClass.fulfilled, (state, action) => {
+        state.loading = false;
+        const classIndex = state.classes.findIndex(c => c.id === action.payload.classId);
+        if (classIndex !== -1) {
+          const student = {
+            studentId: action.payload.studentId,
+            studentName: action.payload.studentName,
+            enrollmentDate: new Date().toISOString()
+          };
+          state.classes[classIndex].students = [
+            ...(state.classes[classIndex].students || []),
+            student
+          ];
+        }
+        state.success = true;
+      })
+      .addCase(assignStudentToClass.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       });
   },
 });

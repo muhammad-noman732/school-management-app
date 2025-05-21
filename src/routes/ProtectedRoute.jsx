@@ -1,13 +1,16 @@
-
 import React from 'react';
-import { Navigate } from "react-router-dom";
+import { Navigate, Outlet } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
 /**
  * Protected route component that checks user authentication and role
  */
-const ProtectedRoute = ({ children, requiredRole = null }) => {
-  const { user } = useSelector((state) => state.auth);
+const ProtectedRoute = ({ requiredRole }) => {
+  const { user, authChecked } = useSelector((state) => state.auth);
+  
+  if (!authChecked) {
+    return null; // Let App component handle loading state
+  }
   
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -34,7 +37,7 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
     }
   }
   
-  return children;
+  return <Outlet />;
 };
 
 export default ProtectedRoute;

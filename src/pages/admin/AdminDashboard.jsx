@@ -4,6 +4,7 @@ import { fetchUserStats } from '../../redux/authSlice';
 import { fetchClassStats } from '../../redux/classSlice';
 import Layout from '../../components/Layout';
 import { Users, BookOpen, Clock, AlertCircle } from 'lucide-react';
+import ClassAssignmentManager from '../../components/admin/ClassAssignmentManager';
 
 const StatCard = ({ title, value, icon: Icon, color }) => (
   <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -96,6 +97,14 @@ const AdminDashboard = () => {
               <p className="text-sm text-gray-500 dark:text-gray-400">Active Classes</p>
             </div>
           ))}
+        </div>
+
+        {/* Class Assignments Section */}
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            Class Assignments
+          </h2>
+          <ClassAssignmentManager />
         </div>
 
         {/* Recent Activity */}
